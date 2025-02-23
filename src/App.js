@@ -1,5 +1,7 @@
-import { BrowserRouter as Router, Routes, Route, Link } from "react-router-dom";
-import Register from "./screens/register";
+import { BrowserRouter as Router, Routes, Route, Link, Navigate } from "react-router-dom";
+import { useState } from 'react';
+import Login from "./auth/login";
+import Register from "./auth/register";
 import Dashboard from "./screens/dashboard";
 import Sales from "./screens/sales";
 import Stock from "./screens/stock";
@@ -10,68 +12,112 @@ import UserManagment from "./screens/user_managment";
 import Settings from "./screens/settings";
 import './App.css';
 
+
 function App() {
+  const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Kullanıcı girişi yapılmamışsa, login sayfasına yönlendir
+  const PrivateRoute = ({ children }) => {
+    return isAuthenticated ? children : <Navigate to="/login" />;
+  };
+
   return (
     <Router>
       <div className="app-container">
-        {/* Sidebar */}
-        <aside className="sidebar">
-          <div className="sidebar-header">
-            <h3>ERP Sistemi</h3>
-          </div>
-          <nav className="sidebar-nav">
-            <Link to="/" className="sidebar-link">
-              <i className="fas fa-home"></i>
-              <span>Ana Sayfa</span>
-            </Link>
-            <Link to="/sales" className="sidebar-link">
-              <i className="fas fa-shopping-cart"></i>
-              <span>Satış Yönetimi</span>
-            </Link>
-            <Link to="/stock" className="sidebar-link">
-              <i className="fas fa-boxes"></i>
-              <span>Stok Yönetimi</span>
-            </Link>
-            <Link to="/companies" className="sidebar-link">
-              <i className="fas fa-building"></i>
-              <span>Şirketler & Müşteriler</span>
-            </Link>
-            <Link to="/payment" className="sidebar-link">
-              <i className="fas fa-credit-card"></i>
-              <span>Ödeme Yönetimi</span>
-            </Link>
-            <Link to="/report" className="sidebar-link">
-              <i className="fas fa-chart-bar"></i>
-              <span>Raporlar</span>
-            </Link>
-            <Link to="/user_managment" className="sidebar-link">
-              <i className="fas fa-users-cog"></i>
-              <span>Kullanıcı Yönetimi</span>
-            </Link>
-            <Link to="/settings" className="sidebar-link">
-              <i className="fas fa-cog"></i>
-              <span>Ayarlar</span>
-            </Link>
-            <Link to="/logout" className="sidebar-link">
-              <i className="fas fa-sign-out-alt"></i>
-              <span>Çıkış</span>
-            </Link>
-          </nav>
-        </aside>
+        {isAuthenticated && (
+          <aside className="sidebar">
+            <div className="sidebar-header">
+              <h3>ERP Sistemi</h3>
+            </div>
+            <nav className="sidebar-nav">
+              <Link to="/" className="sidebar-link">
+                <i className="fas fa-home"></i>
+                <span>Ana Sayfa</span>
+              </Link>
+              <Link to="/sales" className="sidebar-link">
+                <i className="fas fa-shopping-cart"></i>
+                <span>Satış Yönetimi</span>
+              </Link>
+              <Link to="/stock" className="sidebar-link">
+                <i className="fas fa-boxes"></i>
+                <span>Stok Yönetimi</span>
+              </Link>
+              <Link to="/companies" className="sidebar-link">
+                <i className="fas fa-building"></i>
+                <span>Şirketler & Müşteriler</span>
+              </Link>
+              <Link to="/payment" className="sidebar-link">
+                <i className="fas fa-credit-card"></i>
+                <span>Ödeme Yönetimi</span>
+              </Link>
+              <Link to="/report" className="sidebar-link">
+                <i className="fas fa-chart-bar"></i>
+                <span>Raporlar</span>
+              </Link>
+              <Link to="/user_managment" className="sidebar-link">
+                <i className="fas fa-users-cog"></i>
+                <span>Kullanıcı Yönetimi</span>
+              </Link>
+              <Link to="/settings" className="sidebar-link">
+                <i className="fas fa-cog"></i>
+                <span>Ayarlar</span>
+              </Link>
+              <Link to="/logout" className="sidebar-link">
+                <i className="fas fa-sign-out-alt"></i>
+                <span>Çıkış</span>
+              </Link>
+            </nav>
+          </aside>
+        )}
 
-        {/* Main Content */}
-        <div className="main-wrapper">
+        <div className={`main-wrapper ${!isAuthenticated ? 'full-width' : ''}`}>
           <main className="main-content">
             <Routes>
-              <Route path="/" element={<Dashboard />} />
-              <Route path="/sales" element={<Sales />} />
-              <Route path="/stock" element={<Stock />} />
-              <Route path="/companies" element={<Companies />} />
-              <Route path="/payment" element={<Payment />} />
-              <Route path="/report" element={<Report />} />
-              <Route path="/user_managment" element={<UserManagment />} />
-              <Route path="/settings" element={<Settings />} />
+              {/* Auth Routes */}
+              <Route path="/login" element={<Login setIsAuthenticated={setIsAuthenticated} />} />
               <Route path="/register" element={<Register />} />
+
+              {/* Protected Routes */}
+              <Route path="/" element={
+                <PrivateRoute>
+                  <Dashboard />
+                </PrivateRoute>
+              } />
+              <Route path="/sales" element={
+                <PrivateRoute>
+                  <Sales />
+                </PrivateRoute>
+              } />
+              <Route path="/stock" element={
+                <PrivateRoute>
+                  <Stock />
+                </PrivateRoute>
+              } />
+              <Route path="/companies" element={
+                <PrivateRoute>
+                  <Companies />
+                </PrivateRoute>
+              } />
+              <Route path="/payment" element={
+                <PrivateRoute>
+                  <Payment />
+                </PrivateRoute>
+              } />
+              <Route path="/report" element={
+                <PrivateRoute>
+                  <Report />
+                </PrivateRoute>
+              } />
+              <Route path="/user_managment" element={
+                <PrivateRoute>
+                  <UserManagment />
+                </PrivateRoute>
+              } />
+              <Route path="/settings" element={
+                <PrivateRoute>
+                  <Settings />
+                </PrivateRoute>
+              } />
             </Routes>
           </main>
         </div>

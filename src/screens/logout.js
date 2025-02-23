@@ -1,4 +1,5 @@
 import React from 'react';
+import '../screens_css/logout.css';
 
 const Logout = () => {
     return(

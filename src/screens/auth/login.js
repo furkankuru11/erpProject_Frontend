@@ -1,10 +1,10 @@
 import React, { useState } from 'react';
 import { useNavigate, Link } from 'react-router-dom';
 import axios from 'axios';
-import '../../screens_css/auth.css';
+import '../../screens_CSS/auth.css';
 
 const Login = ({ setIsAuthenticated }) => {
-  const [username, setUsername] = useState('');
+  const [userName, setUserName] = useState('');
   const [password, setPassword] = useState('');
   const [message, setMessage] = useState('');
   const navigate = useNavigate();
@@ -12,9 +12,9 @@ const Login = ({ setIsAuthenticated }) => {
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const response = await axios.post('http://localhost:8081/api/auth/login', {
-        username,
-        password
+      const response = await axios.post("http://localhost:8081/api/auth/login", {
+        userName: userName,
+        password: password
       });
 
       if (response.data) {
@@ -36,8 +36,8 @@ const Login = ({ setIsAuthenticated }) => {
             <label>Kullanıcı Adı:</label>
             <input
               type="text"
-              value={username}
-              onChange={(e) => setUsername(e.target.value)}
+              value={userName}
+              onChange={(e) => setUserName(e.target.value)}
               required
             />
           </div>
