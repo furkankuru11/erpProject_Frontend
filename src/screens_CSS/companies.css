@@ -1,0 +1,20 @@
+.companies-container {
+  padding: 20px;
+}
+
+.companies-container h2 {
+  color: #2c3e50;
+  margin-bottom: 20px;
+  border-bottom: 2px solid #e74c3c;
+  padding-bottom: 10px;
+}
+
+.companies-container p {
+  color: #7f8c8d;
+  font-size: 16px;
+  line-height: 1.6;
+  background-color: #f9f9f9;
+  padding: 15px;
+  border-radius: 5px;
+  border-left: 4px solid #e74c3c;
+} 
