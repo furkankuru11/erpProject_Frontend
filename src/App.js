@@ -8,13 +8,24 @@ import Stock from "./screens/stock";
 import Companies from "./screens/companies";
 import Payment from "./screens/payment";
 import Report from "./screens/report";
-import UserManagment from "./screens/user_managment";
-import Settings from "./screens/settings";
+import UserManagment from "./screens/user_management";
+import Expenses from "./screens/expenses";
 import './App.css';
 
 
 function App() {
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+  const [showLogoutModal, setShowLogoutModal] = useState(false);
+
+  const handleLogout = () => {
+    setShowLogoutModal(true);
+  };
+
+  const confirmLogout = () => {
+    setIsAuthenticated(false);
+    setShowLogoutModal(false);
+    return <Navigate to="/login" />;
+  };
 
   // Kullanıcı girişi yapılmamışsa, login sayfasına yönlendir
   const PrivateRoute = ({ children }) => {
@@ -50,6 +61,10 @@ function App() {
                 <i className="fas fa-credit-card"></i>
                 <span>Ödeme Yönetimi</span>
               </Link>
+              <Link to="/expenses" className="sidebar-link">
+                <i className="fas fa-wallet"></i>
+                <span>Giderler</span>
+              </Link>
               <Link to="/report" className="sidebar-link">
                 <i className="fas fa-chart-bar"></i>
                 <span>Raporlar</span>
@@ -58,16 +73,32 @@ function App() {
                 <i className="fas fa-users-cog"></i>
                 <span>Kullanıcı Yönetimi</span>
               </Link>
-              <Link to="/settings" className="sidebar-link">
-                <i className="fas fa-cog"></i>
-                <span>Ayarlar</span>
-              </Link>
-              <Link to="/logout" className="sidebar-link">
+              <button onClick={handleLogout} className="sidebar-link logout-btn">
                 <i className="fas fa-sign-out-alt"></i>
                 <span>Çıkış</span>
-              </Link>
+              </button>
             </nav>
           </aside>
+        )}
+
+        {/* Çıkış Onay Modalı */}
+        {showLogoutModal && (
+          <div className="modal-overlay">
+            <div className="modal">
+              <div className="modal-content">
+                <h3>Çıkış Onayı</h3>
+                <p>Çıkmak istediğinize emin misiniz?</p>
+                <div className="modal-actions">
+                  <button onClick={() => setShowLogoutModal(false)} className="cancel-btn">
+                    İptal
+                  </button>
+                  <button onClick={confirmLogout} className="confirm-btn">
+                    Evet, Çıkış Yap
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
         )}
 
         <div className={`main-wrapper ${!isAuthenticated ? 'full-width' : ''}`}>
@@ -103,6 +134,11 @@ function App() {
                   <Payment />
                 </PrivateRoute>
               } />
+              <Route path="/expenses" element={
+                <PrivateRoute>
+                  <Expenses />
+                </PrivateRoute>
+              } />
               <Route path="/report" element={
                 <PrivateRoute>
                   <Report />
@@ -111,11 +147,6 @@ function App() {
               <Route path="/user_managment" element={
                 <PrivateRoute>
                   <UserManagment />
-                </PrivateRoute>
-              } />
-              <Route path="/settings" element={
-                <PrivateRoute>
-                  <Settings />
                 </PrivateRoute>
               } />
             </Routes>
