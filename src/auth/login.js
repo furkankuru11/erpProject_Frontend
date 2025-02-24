@@ -1,111 +1,139 @@
 import React, { useState } from 'react';
-import { useNavigate, Link } from 'react-router-dom';
-import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
+import '../screens_css/auth.css';
 
-const Login = ({ setIsAuthenticated }) => {
-  const [userName, setUserName] = useState('');
-  const [password, setPassword] = useState('');
-  const [message, setMessage] = useState('');
+const Login = () => {
   const navigate = useNavigate();
+  const [formData, setFormData] = useState({
+    email: '',
+    password: ''
+  });
+
+  const [errors, setErrors] = useState({});
+  const [isLoading, setIsLoading] = useState(false);
+
+  const validateForm = () => {
+    const newErrors = {};
+
+    if (!formData.email) {
+      newErrors.email = 'E-posta adresi gereklidir';
+    }
+
+    if (!formData.password) {
+      newErrors.password = 'Şifre gereklidir';
+    }
+
+    setErrors(newErrors);
+    return Object.keys(newErrors).length === 0;
+  };
+
+  const handleChange = (e) => {
+    const { name, value } = e.target;
+    setFormData(prev => ({
+      ...prev,
+      [name]: value
+    }));
+  };
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     
-    // Basit validation
-    if (userName.length < 3) {
-      setMessage("❌ Kullanıcı adı en az 3 karakter olmalıdır!");
-      return;
-    }
-    if (password.length < 6) {
-      setMessage("❌ Parola en az 6 karakter olmalıdır!");
-      return;
-    }
+    if (!validateForm()) return;
 
+    setIsLoading(true);
     try {
-      console.log('Giriş denemesi yapılıyor...', { userName, password });
-
-      const response = await axios.post("http://localhost:8081/api/auth/login", {
-        userName: userName,
-        password: password
+      // API isteği burada yapılacak
+      const response = await fetch('/api/login', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(formData),
       });
 
-      console.log('Backend yanıtı:', response);
-      console.log('Yanıt verisi:', response.data);
-
-      // Backend'den gelen yanıtı kontrol et
-      if (response.data && response.status === 200) {
-        setMessage("✅ Giriş başarılı! Yönlendiriliyorsunuz...");
-        
-        // Token varsa sakla
-        if (response.data.token) {
-          localStorage.setItem('token', response.data.token);
-        }
-        
-        localStorage.setItem('userName', userName);
-        setIsAuthenticated(true);
-        
-        setTimeout(() => {
-          navigate('/');
-        }, 1000);
+      if (response.ok) {
+        navigate('/dashboard');
       } else {
-        setMessage("❌ Beklenmeyen yanıt formatı");
-        console.warn('Beklenmeyen yanıt:', response);
+        const data = await response.json();
+        setErrors({ submit: data.message || 'Giriş başarısız. Lütfen bilgilerinizi kontrol edin.' });
       }
     } catch (error) {
-      console.error('Login hatası:', error);
-      console.error('Hata detayı:', {
-        status: error.response?.status,
-        data: error.response?.data,
-        message: error.message
-      });
-      
-      if (error.code === 'ERR_NETWORK') {
-        setMessage("❌ Sunucuya bağlanılamadı! Sunucu çalışıyor mu?");
-      } else if (error.response?.status === 401) {
-        setMessage("❌ " + (error.response.data.message || "Kullanıcı adı veya şifre hatalı!"));
-      } else if (error.response?.status === 404) {
-        setMessage("❌ " + (error.response.data.message || "Kullanıcı bulunamadı!"));
-      } else {
-        setMessage("❌ Giriş başarısız: " + (error.response?.data?.message || error.message));
-      }
+      setErrors({ submit: 'Bir hata oluştu. Lütfen tekrar deneyin.' });
+    } finally {
+      setIsLoading(false);
     }
   };
 
   return (
     <div className="auth-container">
-      <div className="auth-box">
+      <div className="auth-card">
         <h2>Giriş Yap</h2>
-        <form onSubmit={handleSubmit}>
+        <form onSubmit={handleSubmit} className="auth-form">
           <div className="form-group">
-            <label>Kullanıcı Adı:</label>
+            <label htmlFor="email">E-posta</label>
             <input
-              type="text"
-              value={userName}
-              onChange={(e) => setUserName(e.target.value)}
-              required
-              minLength={3}
+              type="email"
+              id="email"
+              name="email"
+              value={formData.email}
+              onChange={handleChange}
+              className={errors.email ? 'error' : ''}
+              placeholder="ornek@email.com"
+              autoComplete="email"
             />
+            {errors.email && <span className="error-message">{errors.email}</span>}
           </div>
+
           <div className="form-group">
-            <label>Parola:</label>
+            <label htmlFor="password">Şifre</label>
             <input
               type="password"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              required
-              minLength={6}
+              id="password"
+              name="password"
+              value={formData.password}
+              onChange={handleChange}
+              className={errors.password ? 'error' : ''}
+              placeholder="••••••••"
+              autoComplete="current-password"
             />
+            {errors.password && <span className="error-message">{errors.password}</span>}
           </div>
-          <button type="submit">Giriş Yap</button>
+
+          <div className="form-options">
+            <label className="remember-me">
+              <input type="checkbox" /> Beni Hatırla
+            </label>
+            
+          </div>
+
+          {errors.submit && (
+            <div className="error-message submit-error">{errors.submit}</div>
+          )}
+
+          <button 
+            type="submit" 
+            className="auth-button" 
+            disabled={isLoading}
+          >
+            {isLoading ? (
+              <>
+                <i className="fas fa-spinner fa-spin"></i>
+                Giriş Yapılıyor...
+              </>
+            ) : (
+              'Giriş Yap'
+            )}
+          </button>
+
+          <div className="auth-links">
+            <p>
+              Hesabınız yok mu?{' '}
+              <span onClick={() => navigate('/register')} className="link">
+                Hesap Oluştur
+              </span>
+            </p>
+          </div>
         </form>
-        {message && (
-          <p className={`message ${message.includes('✅') ? 'success' : 'error'}`}>
-            {message}
-          </p>
-        )}
-        <p className="auth-link">
-          Hesabınız yok mu? <Link to="/register">Kayıt Ol</Link>
-        </p>
       </div>
     </div>
   );
