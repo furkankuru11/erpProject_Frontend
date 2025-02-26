@@ -1,23 +1,145 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
+import axios from 'axios';
 import '../screens_css/sales.css';
 
 const Sales = () => {
-  // Örnek satış verileri
-  const [sales] = useState({
-    recentSales: [
-      { id: 'S001', customer: 'Ahmet Yılmaz', products: ['Ürün A', 'Ürün B'], total: 2500, date: '2024-03-20', status: 'completed' },
-      { id: 'S002', customer: 'Mehmet Demir', products: ['Ürün C'], total: 1800, date: '2024-03-19', status: 'pending' },
-      { id: 'S003', customer: 'Ayşe Kaya', products: ['Ürün D', 'Ürün E'], total: 3200, date: '2024-03-18', status: 'processing' },
-    ],
-    products: [
-      { id: 'P001', name: 'Ürün A', price: 1200, stock: 45 },
-      { id: 'P002', name: 'Ürün B', price: 1500, stock: 30 },
-      { id: 'P003', name: 'Ürün C', price: 1800, stock: 25 },
-    ]
-  });
-
+  const [orders, setOrders] = useState([]);
+  const [companies, setCompanies] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [products, setProducts] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState(null);
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
+  const [showAddModal, setShowAddModal] = useState(false);
+
+  // Yeni sipariş state'i
+  const [newOrder, setNewOrder] = useState({
+    orderNumber: '',
+    companyId: '',
+    customerId: '',
+    orderDate: new Date().toISOString().split('T')[0],
+    deliveryDate: '',
+    status: 'DRAFT',
+    totalAmount: 0,
+    taxAmount: 0,
+    discountAmount: 0,
+    netAmount: 0,
+    notes: '',
+    orderType: 'company', // company veya individual
+    productIds: []
+  });
+
+  // Verileri getir fonksiyonunu component scope'una taşıyalım
+  const fetchData = async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        setError('Oturum süreniz dolmuş. Lütfen tekrar giriş yapın.');
+        return;
+      }
+
+      const config = {
+        headers: { 'Authorization': `Bearer ${token}` }
+      };
+
+      const [ordersRes, companiesRes, customersRes, productsRes] = await Promise.all([
+        axios.get('http://localhost:8081/api/sales-orders', config),
+        axios.get('http://localhost:8081/api/companies', config),
+        axios.get('http://localhost:8081/api/customers', config),
+        axios.get('http://localhost:8081/api/products', config)
+      ]);
+
+      setOrders(ordersRes.data);
+      setCompanies(companiesRes.data);
+      setCustomers(customersRes.data);
+      setProducts(productsRes.data);
+      setError(null);
+    } catch (err) {
+      setError('Veriler yüklenirken bir hata oluştu');
+      console.error('Hata:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // useEffect içinde fetchData'yı çağır
+  useEffect(() => {
+    fetchData();
+  }, []);
+
+  // Sipariş oluştur
+  const handleCreateOrder = async () => {
+    try {
+      setLoading(true);
+      const token = localStorage.getItem('token');
+      
+      if (!token) {
+        setError('Oturum süreniz dolmuş. Lütfen tekrar giriş yapın.');
+        return;
+      }
+
+      const orderData = {
+        ...newOrder,
+        orderNumber: `SO${Date.now()}`,
+        companyId: newOrder.orderType === 'company' ? newOrder.companyId : null,
+        customerId: newOrder.orderType === 'individual' ? newOrder.customerId : null,
+        totalAmount: Number(newOrder.totalAmount),
+        taxAmount: Number(newOrder.taxAmount),
+        discountAmount: Number(newOrder.discountAmount),
+        netAmount: Number(newOrder.netAmount),
+        created_by: 1, // Aktif kullanıcının ID'si
+        productIds: newOrder.productIds || []
+      };
+
+      await axios.post('http://localhost:8081/api/sales-orders', orderData, {
+        headers: { 'Authorization': `Bearer ${token}` }
+      });
+
+      setShowAddModal(false);
+      // Formu temizle
+      setNewOrder({
+        orderNumber: '',
+        companyId: '',
+        customerId: '',
+        orderDate: new Date().toISOString().split('T')[0],
+        deliveryDate: '',
+        status: 'DRAFT',
+        totalAmount: 0,
+        taxAmount: 0,
+        discountAmount: 0,
+        netAmount: 0,
+        notes: '',
+        orderType: 'company',
+        productIds: []
+      });
+      
+      // Siparişleri yeniden yükle
+      fetchData();
+      setError(null);
+    } catch (err) {
+      setError('Sipariş oluşturulurken bir hata oluştu: ' + err.message);
+      console.error('Hata:', err);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Filtrelenmiş siparişleri getir
+  const getFilteredOrders = () => {
+    return orders.filter(order => {
+      const matchesSearch = 
+        order.orderNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (companies.find(c => c.id === order.companyId)?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (customers.find(c => c.id === order.customerId)?.name || '').toLowerCase().includes(searchTerm.toLowerCase());
+
+      const matchesStatus = filterStatus === 'all' || order.status === filterStatus;
+
+      return matchesSearch && matchesStatus;
+    });
+  };
 
   return (
     <div className="sales-container">
@@ -88,20 +210,20 @@ const Sales = () => {
           <span>Durum</span>
           <span>İşlemler</span>
         </div>
-        {sales.recentSales.map(sale => (
-          <div key={sale.id} className="sale-item">
-            <span className="sale-id">{sale.id}</span>
-            <span className="customer-name">{sale.customer}</span>
+        {getFilteredOrders().map(order => (
+          <div key={order.id} className="sale-item">
+            <span className="sale-id">{order.orderNumber}</span>
+            <span className="customer-name">{companies.find(c => c.id === order.companyId)?.name || customers.find(c => c.id === order.customerId)?.name || ''}</span>
             <span className="products">
-              {sale.products.join(', ')}
+              {products.filter(p => order.productIds.includes(p.id)).map(p => p.name).join(', ')}
             </span>
-            <span className="total">₺{sale.total.toLocaleString()}</span>
+            <span className="total">₺{order.totalAmount.toLocaleString()}</span>
             <span className="date">
-              {new Date(sale.date).toLocaleDateString('tr-TR')}
+              {new Date(order.orderDate).toLocaleDateString('tr-TR')}
             </span>
-            <span className={`status ${sale.status}`}>
-              {sale.status === 'completed' ? 'Tamamlandı' :
-               sale.status === 'pending' ? 'Bekliyor' : 'İşlemde'}
+            <span className={`status ${order.status}`}>
+              {order.status === 'completed' ? 'Tamamlandı' :
+               order.status === 'pending' ? 'Bekliyor' : 'İşlemde'}
             </span>
             <div className="actions">
               <button className="icon-button" title="Düzenle">
@@ -122,7 +244,7 @@ const Sales = () => {
       <div className="quick-add-section">
         <h2>Hızlı Ürün Ekleme</h2>
         <div className="product-grid">
-          {sales.products.map(product => (
+          {products.map(product => (
             <div key={product.id} className="product-card">
               <div className="product-info">
                 <h3>{product.name}</h3>
