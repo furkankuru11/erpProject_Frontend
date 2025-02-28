@@ -1,24 +1,36 @@
 import React, { useState, useEffect } from 'react';
-import axios from 'axios';
 import '../screens_css/sales.css';
+import axios from 'axios';
+
+const API_BASE_URL = 'http://localhost:8080/api';
 
 const Sales = () => {
+  // State tanımlamaları
   const [orders, setOrders] = useState([]);
-  const [companies, setCompanies] = useState([]);
-  const [customers, setCustomers] = useState([]);
-  const [products, setProducts] = useState([]);
-  const [loading, setLoading] = useState(false);
+  const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
+
+  const [companies] = useState([
+    { id: 1, name: 'ABC Şirketi' },
+    { id: 2, name: 'XYZ Limited' }
+  ]);
+
+  const [customers] = useState([
+    { id: 1, name: 'Ahmet Yılmaz' },
+    { id: 2, name: 'Mehmet Demir' }
+  ]);
+
   const [searchTerm, setSearchTerm] = useState('');
   const [filterStatus, setFilterStatus] = useState('all');
   const [showAddModal, setShowAddModal] = useState(false);
+  const [showStatusDropdown, setShowStatusDropdown] = useState(false);
 
-  // Yeni sipariş state'i
+  // Yeni sipariş state'ini güncelle
   const [newOrder, setNewOrder] = useState({
     orderNumber: '',
-    companyId: '',
-    customerId: '',
-    orderDate: new Date().toISOString().split('T')[0],
+    company: null,
+    customer: null,
+    orderDate: new Date().toISOString(),
     deliveryDate: '',
     status: 'DRAFT',
     totalAmount: 0,
@@ -26,241 +38,533 @@ const Sales = () => {
     discountAmount: 0,
     netAmount: 0,
     notes: '',
-    orderType: 'company', // company veya individual
-    productIds: []
+    orderType: 'company' // UI için ek alan
   });
 
-  // Verileri getir fonksiyonunu component scope'una taşıyalım
-  const fetchData = async () => {
-    try {
-      setLoading(true);
-      const token = localStorage.getItem('token');
-      
-      if (!token) {
-        setError('Oturum süreniz dolmuş. Lütfen tekrar giriş yapın.');
-        return;
-      }
+  // Loading state ekle
+  const [isSaving, setIsSaving] = useState(false);
 
-      const config = {
-        headers: { 'Authorization': `Bearer ${token}` }
-      };
+  const statusOptions = [
+    { value: 'all', label: 'Tümü' },
+    { value: 'DRAFT', label: 'Taslak' },
+    { value: 'CONFIRMED', label: 'Onaylandı' },
+    { value: 'SHIPPED', label: 'Kargoda' },
+    { value: 'DELIVERED', label: 'Teslim Edildi' },
+    { value: 'CANCELLED', label: 'İptal Edildi' }
+  ];
 
-      const [ordersRes, companiesRes, customersRes, productsRes] = await Promise.all([
-        axios.get('http://localhost:8081/api/sales-orders', config),
-        axios.get('http://localhost:8081/api/companies', config),
-        axios.get('http://localhost:8081/api/customers', config),
-        axios.get('http://localhost:8081/api/products', config)
-      ]);
-
-      setOrders(ordersRes.data);
-      setCompanies(companiesRes.data);
-      setCustomers(customersRes.data);
-      setProducts(productsRes.data);
-      setError(null);
-    } catch (err) {
-      setError('Veriler yüklenirken bir hata oluştu');
-      console.error('Hata:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // useEffect içinde fetchData'yı çağır
-  useEffect(() => {
-    fetchData();
-  }, []);
-
-  // Sipariş oluştur
-  const handleCreateOrder = async () => {
-    try {
-      setLoading(true);
-      const token = localStorage.getItem('token');
-      
-      if (!token) {
-        setError('Oturum süreniz dolmuş. Lütfen tekrar giriş yapın.');
-        return;
-      }
-
-      const orderData = {
-        ...newOrder,
-        orderNumber: `SO${Date.now()}`,
-        companyId: newOrder.orderType === 'company' ? newOrder.companyId : null,
-        customerId: newOrder.orderType === 'individual' ? newOrder.customerId : null,
-        totalAmount: Number(newOrder.totalAmount),
-        taxAmount: Number(newOrder.taxAmount),
-        discountAmount: Number(newOrder.discountAmount),
-        netAmount: Number(newOrder.netAmount),
-        created_by: 1, // Aktif kullanıcının ID'si
-        productIds: newOrder.productIds || []
-      };
-
-      await axios.post('http://localhost:8081/api/sales-orders', orderData, {
-        headers: { 'Authorization': `Bearer ${token}` }
-      });
-
-      setShowAddModal(false);
-      // Formu temizle
-      setNewOrder({
-        orderNumber: '',
-        companyId: '',
-        customerId: '',
-        orderDate: new Date().toISOString().split('T')[0],
-        deliveryDate: '',
-        status: 'DRAFT',
-        totalAmount: 0,
-        taxAmount: 0,
-        discountAmount: 0,
-        netAmount: 0,
-        notes: '',
-        orderType: 'company',
-        productIds: []
-      });
-      
-      // Siparişleri yeniden yükle
-      fetchData();
-      setError(null);
-    } catch (err) {
-      setError('Sipariş oluşturulurken bir hata oluştu: ' + err.message);
-      console.error('Hata:', err);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  // Filtrelenmiş siparişleri getir
+  // Filtreleme fonksiyonu
   const getFilteredOrders = () => {
     return orders.filter(order => {
       const matchesSearch = 
-        order.orderNumber?.toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (companies.find(c => c.id === order.companyId)?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
-        (customers.find(c => c.id === order.customerId)?.name || '').toLowerCase().includes(searchTerm.toLowerCase());
+        order.order_number?.toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (companies.find(c => c.id === order.company_id)?.name || '').toLowerCase().includes(searchTerm.toLowerCase()) ||
+        (customers.find(c => c.id === order.customer_id)?.name || '').toLowerCase().includes(searchTerm.toLowerCase());
 
       const matchesStatus = filterStatus === 'all' || order.status === filterStatus;
-
       return matchesSearch && matchesStatus;
     });
   };
 
+  // Siparişleri getir
+  const fetchOrders = async () => {
+    try {
+      setLoading(true);
+      const response = await axios.get(`${API_BASE_URL}/sales-orders`);
+      setOrders(response.data);
+      setError(null);
+    } catch (error) {
+      console.error('Siparişler yüklenirken hata:', error);
+      setError('Siparişler yüklenirken bir hata oluştu.');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  // Sipariş sil
+  const handleDeleteOrder = async (orderId) => {
+    if (window.confirm('Bu siparişi silmek istediğinizden emin misiniz?')) {
+      try {
+        await axios.delete(`${API_BASE_URL}/sales-orders/${orderId}`);
+        alert('Sipariş başarıyla silindi.');
+        fetchOrders(); // Listeyi yenile
+      } catch (error) {
+        console.error('Sipariş silinirken hata:', error);
+        alert('Sipariş silinirken bir hata oluştu.');
+      }
+    }
+  };
+
+  // Kaydetme fonksiyonunu güncelle
+  const handleCreateOrder = async () => {
+    setIsSaving(true);
+    try {
+      // Backend'e gönderilecek veriyi hazırla
+      const orderData = {
+        orderNumber: `SO${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`,
+        company: newOrder.orderType === 'company' && newOrder.company ? {
+          id: newOrder.company.id
+        } : null,
+        customer: newOrder.orderType === 'individual' && newOrder.customer ? {
+          id: newOrder.customer.id
+        } : null,
+        orderDate: new Date(newOrder.orderDate).toISOString().split('.')[0], // Remove milliseconds
+        deliveryDate: newOrder.deliveryDate ? new Date(newOrder.deliveryDate).toISOString().split('.')[0] : null,
+        status: "DRAFT",
+        totalAmount: Number(newOrder.totalAmount).toFixed(2),
+        taxAmount: Number(newOrder.taxAmount).toFixed(2),
+        discountAmount: Number(newOrder.discountAmount).toFixed(2),
+        netAmount: Number(newOrder.netAmount).toFixed(2),
+        notes: newOrder.notes || "",
+        createdBy: {
+          id: 1
+        }
+      };
+
+      // İstek öncesi veriyi kontrol et
+      console.log('Gönderilecek veri:', orderData);
+
+      // Backend'e POST isteği gönder
+      const response = await axios.post(`${API_BASE_URL}/sales-orders`, orderData, {
+        headers: {
+          'Content-Type': 'application/json',
+          'Accept': 'application/json'
+        }
+      });
+
+      console.log('Sunucu yanıtı:', response);
+
+      if (response.status === 201 || response.status === 200) {
+        setShowAddModal(false);
+        
+        // State'i sıfırla
+        setNewOrder({
+          orderNumber: '',
+          company: null,
+          customer: null,
+          orderDate: new Date().toISOString(),
+          deliveryDate: '',
+          status: 'DRAFT',
+          totalAmount: 0,
+          taxAmount: 0,
+          discountAmount: 0,
+          netAmount: 0,
+          notes: '',
+          orderType: 'company'
+        });
+
+        alert('Sipariş başarıyla oluşturuldu!');
+        fetchOrders();
+      }
+    } catch (error) {
+      console.error('Sipariş oluşturulurken hata:', error);
+      console.log('Hata detayı:', {
+        response: error.response?.data,
+        status: error.response?.status,
+        headers: error.response?.headers
+      });
+      
+      let errorMessage = 'Sipariş oluşturulurken bir hata oluştu.';
+      
+      if (error.response) {
+        if (error.response.data && typeof error.response.data === 'object') {
+          // Detaylı hata mesajlarını birleştir
+          const messages = [];
+          for (const key in error.response.data) {
+            if (typeof error.response.data[key] === 'string') {
+              messages.push(error.response.data[key]);
+            } else if (Array.isArray(error.response.data[key])) {
+              messages.push(...error.response.data[key]);
+            }
+          }
+          errorMessage = messages.join('\n') || errorMessage;
+        } else {
+          errorMessage = error.response.data || errorMessage;
+        }
+      } else if (error.request) {
+        errorMessage = 'Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edin.';
+      }
+      
+      alert(errorMessage);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  // Component yüklendiğinde siparişleri getir
+  useEffect(() => {
+    fetchOrders();
+  }, []);
+
+  // Özet bilgileri hesapla
+  const getSummary = () => {
+    return {
+      totalSales: orders.reduce((sum, order) => sum + order.total_amount, 0),
+      totalOrders: orders.length,
+      activeOrders: orders.filter(order => !['DELIVERED', 'CANCELLED'].includes(order.status)).length,
+      totalCustomers: new Set([
+        ...orders.filter(o => o.company_id).map(o => o.company_id),
+        ...orders.filter(o => o.customer_id).map(o => o.customer_id)
+      ]).size
+    };
+  };
+
   return (
     <div className="sales-container">
-      {/* Üst Başlık ve Eylemler */}
+      {/* Header */}
       <div className="sales-header">
         <div className="header-left">
           <h1>Satış Yönetimi</h1>
         </div>
         <div className="header-actions">
-          <button className="action-button primary">
+          <button 
+            className="action-button primary"
+            onClick={() => setShowAddModal(true)}
+          >
             <i className="fas fa-plus"></i>
             Yeni Satış
           </button>
-          <button className="action-button">
-            <i className="fas fa-file-export"></i>
-            Dışa Aktar
-          </button>
         </div>
       </div>
 
-      {/* Arama ve Filtreleme */}
-      <div className="sales-filters">
-        <div className="search-box">
-          <i className="fas fa-search"></i>
-          <input 
-            type="text" 
-            placeholder="Satış veya müşteri ara..."
-            value={searchTerm}
-            onChange={(e) => setSearchTerm(e.target.value)}
-          />
+      {/* Özet Kartları */}
+      <div className="summary-cards">
+        <div className="summary-card">
+          <div className="card-icon">
+            <i className="fas fa-shopping-cart"></i>
+          </div>
+          <div className="card-content">
+            <h3>Toplam Satış</h3>
+            <p>₺{getSummary().totalSales.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</p>
+          </div>
         </div>
-        <div className="filter-buttons">
-          <button 
-            className={`filter-btn ${filterStatus === 'all' ? 'active' : ''}`}
-            onClick={() => setFilterStatus('all')}
-          >
-            Tümü
-          </button>
-          <button 
-            className={`filter-btn ${filterStatus === 'completed' ? 'active' : ''}`}
-            onClick={() => setFilterStatus('completed')}
-          >
-            Tamamlanan
-          </button>
-          <button 
-            className={`filter-btn ${filterStatus === 'pending' ? 'active' : ''}`}
-            onClick={() => setFilterStatus('pending')}
-          >
-            Bekleyen
-          </button>
-          <button 
-            className={`filter-btn ${filterStatus === 'processing' ? 'active' : ''}`}
-            onClick={() => setFilterStatus('processing')}
-          >
-            İşlemde
-          </button>
+
+        <div className="summary-card">
+          <div className="card-icon">
+            <i className="fas fa-file-invoice"></i>
+          </div>
+          <div className="card-content">
+            <h3>Toplam Sipariş</h3>
+            <p>{getSummary().totalOrders}</p>
+          </div>
+        </div>
+
+        <div className="summary-card">
+          <div className="card-icon">
+            <i className="fas fa-clock"></i>
+          </div>
+          <div className="card-content">
+            <h3>Aktif Sipariş</h3>
+            <p>{getSummary().activeOrders}</p>
+          </div>
+        </div>
+
+        <div className="summary-card">
+          <div className="card-icon">
+            <i className="fas fa-users"></i>
+          </div>
+          <div className="card-content">
+            <h3>Toplam Müşteri</h3>
+            <p>{getSummary().totalCustomers}</p>
+          </div>
         </div>
       </div>
 
-      {/* Satış Listesi */}
-      <div className="sales-list">
-        <div className="list-header">
-          <span>Satış No</span>
-          <span>Müşteri</span>
-          <span>Ürünler</span>
-          <span>Toplam</span>
-          <span>Tarih</span>
-          <span>Durum</span>
-          <span>İşlemler</span>
+      {/* Yükleme ve hata durumları */}
+      {loading ? (
+        <div className="loading-state">
+          <i className="fas fa-spinner fa-spin"></i>
+          <span>Siparişler yükleniyor...</span>
         </div>
-        {getFilteredOrders().map(order => (
-          <div key={order.id} className="sale-item">
-            <span className="sale-id">{order.orderNumber}</span>
-            <span className="customer-name">{companies.find(c => c.id === order.companyId)?.name || customers.find(c => c.id === order.customerId)?.name || ''}</span>
-            <span className="products">
-              {products.filter(p => order.productIds.includes(p.id)).map(p => p.name).join(', ')}
-            </span>
-            <span className="total">₺{order.totalAmount.toLocaleString()}</span>
-            <span className="date">
-              {new Date(order.orderDate).toLocaleDateString('tr-TR')}
-            </span>
-            <span className={`status ${order.status}`}>
-              {order.status === 'completed' ? 'Tamamlandı' :
-               order.status === 'pending' ? 'Bekliyor' : 'İşlemde'}
-            </span>
-            <div className="actions">
-              <button className="icon-button" title="Düzenle">
-                <i className="fas fa-edit"></i>
+      ) : error ? (
+        <div className="error-state">
+          <i className="fas fa-exclamation-circle"></i>
+          <span>{error}</span>
+        </div>
+      ) : (
+        <>
+          {/* Filtreler */}
+          <div className="sales-filters">
+            <div className="search-box">
+              <i className="fas fa-search"></i>
+              <input 
+                type="text" 
+                placeholder="Sipariş no veya müşteri ara..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+              />
+            </div>
+            <div className="filter-dropdown">
+              <button 
+                className="dropdown-trigger"
+                onClick={() => setShowStatusDropdown(!showStatusDropdown)}
+              >
+                <span>
+                  {statusOptions.find(option => option.value === filterStatus)?.label || 'Durum Filtrele'}
+                </span>
+                <i className={`fas fa-chevron-${showStatusDropdown ? 'up' : 'down'}`}></i>
               </button>
-              <button className="icon-button" title="Detaylar">
-                <i className="fas fa-eye"></i>
+              {showStatusDropdown && (
+                <div className="dropdown-menu">
+                  {statusOptions.map(option => (
+                    <button
+                      key={option.value}
+                      className={`dropdown-item ${filterStatus === option.value ? 'active' : ''}`}
+                      onClick={() => {
+                        setFilterStatus(option.value);
+                        setShowStatusDropdown(false);
+                      }}
+                    >
+                      {option.label}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Satış Listesi */}
+          <div className="sales-list">
+            <div className="list-header">
+              <span>Sipariş No</span>
+              <span>Müşteri</span>
+              <span>Sipariş Tarihi</span>
+              <span>Teslimat Tarihi</span>
+              <span>Tutar</span>
+              <span>Durum</span>
+              <span>İşlemler</span>
+            </div>
+            {getFilteredOrders().map(order => (
+              <div key={order.id} className="sale-item">
+                <span>{order.order_number}</span>
+                <span>
+                  {order.company_id 
+                    ? companies.find(c => c.id === order.company_id)?.name 
+                    : customers.find(c => c.id === order.customer_id)?.name}
+                </span>
+                <span>{new Date(order.order_date).toLocaleDateString('tr-TR')}</span>
+                <span>
+                  {order.delivery_date 
+                    ? new Date(order.delivery_date).toLocaleDateString('tr-TR')
+                    : '-'}
+                </span>
+                <span>
+                  <div className="amount-details">
+                    <span className="total-amount">
+                      ₺{order.total_amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                    </span>
+                    <span className="tax-discount">
+                      {order.tax_amount > 0 && 
+                        <span className="tax">+KDV: ₺{order.tax_amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                      }
+                      {order.discount_amount > 0 && 
+                        <span className="discount">-İnd: ₺{order.discount_amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                      }
+                    </span>
+                  </div>
+                </span>
+                <span className={`status-badge ${order.status.toLowerCase()}`}>
+                  {order.status === 'DRAFT' ? 'Taslak' :
+                   order.status === 'CONFIRMED' ? 'Onaylandı' :
+                   order.status === 'SHIPPED' ? 'Kargoda' :
+                   order.status === 'DELIVERED' ? 'Teslim Edildi' : 
+                   order.status === 'CANCELLED' ? 'İptal Edildi' : 'N/A'}
+                </span>
+                <div className="actions">
+                  <button className="icon-button" title="Düzenle">
+                    <i className="fas fa-edit"></i>
+                  </button>
+                  <button 
+                    className="icon-button" 
+                    title="Sil"
+                    onClick={() => handleDeleteOrder(order.id)}
+                  >
+                    <i className="fas fa-trash"></i>
+                  </button>
+                </div>
+              </div>
+            ))}
+          </div>
+        </>
+      )}
+
+      {/* Yeni Satış Modal */}
+      {showAddModal && (
+        <div className="modal-overlay">
+          <div className="modal">
+            <div className="modal-header">
+              <h3>Yeni Satış Oluştur</h3>
+              <button onClick={() => setShowAddModal(false)}>
+                <i className="fas fa-times"></i>
               </button>
-              <button className="icon-button" title="Sil">
-                <i className="fas fa-trash"></i>
+            </div>
+            <div className="modal-content">
+              {/* Müşteri Bilgileri */}
+              <div className="form-section">
+                <h4>Müşteri Bilgileri</h4>
+                <div className="form-group">
+                  <label>Müşteri Tipi</label>
+                  <select 
+                    value={newOrder.orderType}
+                    onChange={(e) => setNewOrder({...newOrder, orderType: e.target.value, company: null, customer: null})}
+                  >
+                    <option value="company">Kurumsal</option>
+                    <option value="individual">Bireysel</option>
+                  </select>
+                </div>
+
+                <div className="form-group">
+                  <label>{newOrder.orderType === 'company' ? 'Firma' : 'Müşteri'}</label>
+                  <select 
+                    value={newOrder.orderType === 'company' ? newOrder.company?.id : newOrder.customer?.id}
+                    onChange={(e) => {
+                      const value = e.target.value;
+                      const selected = newOrder.orderType === 'company' 
+                        ? companies.find(c => c.id === Number(value))
+                        : customers.find(c => c.id === Number(value));
+                      
+                      setNewOrder({
+                        ...newOrder,
+                        company: newOrder.orderType === 'company' ? selected : null,
+                        customer: newOrder.orderType === 'individual' ? selected : null
+                      });
+                    }}
+                  >
+                    <option value="">Seçiniz</option>
+                    {newOrder.orderType === 'company' 
+                      ? companies.map(company => (
+                          <option key={company.id} value={company.id}>{company.name}</option>
+                        ))
+                      : customers.map(customer => (
+                          <option key={customer.id} value={customer.id}>{customer.name}</option>
+                        ))
+                    }
+                  </select>
+                </div>
+              </div>
+
+              {/* Sipariş Detayları */}
+              <div className="form-section">
+                <h4>Sipariş Detayları</h4>
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Sipariş Tarihi</label>
+                    <input 
+                      type="datetime-local"
+                      value={newOrder.orderDate.slice(0, 16)}
+                      onChange={(e) => setNewOrder({...newOrder, orderDate: e.target.value})}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>Teslimat Tarihi</label>
+                    <input 
+                      type="datetime-local"
+                      value={newOrder.deliveryDate}
+                      onChange={(e) => setNewOrder({...newOrder, deliveryDate: e.target.value})}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-row">
+                  <div className="form-group">
+                    <label>Toplam Tutar</label>
+                    <input 
+                      type="number"
+                      value={newOrder.totalAmount}
+                      onChange={(e) => {
+                        const total = Number(e.target.value);
+                        const tax = total * 0.18; // Örnek KDV oranı
+                        setNewOrder({
+                          ...newOrder, 
+                          totalAmount: total,
+                          taxAmount: tax,
+                          netAmount: total + tax - newOrder.discountAmount
+                        });
+                      }}
+                    />
+                  </div>
+
+                  <div className="form-group">
+                    <label>İndirim Tutarı</label>
+                    <input 
+                      type="number"
+                      value={newOrder.discountAmount}
+                      onChange={(e) => {
+                        const discount = Number(e.target.value);
+                        setNewOrder({
+                          ...newOrder, 
+                          discountAmount: discount,
+                          netAmount: newOrder.totalAmount + newOrder.taxAmount - discount
+                        });
+                      }}
+                    />
+                  </div>
+                </div>
+
+                <div className="form-group">
+                  <label>Notlar</label>
+                  <textarea
+                    value={newOrder.notes}
+                    onChange={(e) => setNewOrder({...newOrder, notes: e.target.value})}
+                    rows="3"
+                  />
+                </div>
+              </div>
+
+              {/* Özet Bilgiler */}
+              <div className="order-summary">
+                <div className="summary-row">
+                  <span>Ara Toplam:</span>
+                  <span>₺{newOrder.totalAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="summary-row">
+                  <span>KDV (%18):</span>
+                  <span>₺{newOrder.taxAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="summary-row">
+                  <span>İndirim:</span>
+                  <span>₺{newOrder.discountAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                </div>
+                <div className="summary-row total">
+                  <span>Genel Toplam:</span>
+                  <span>₺{newOrder.netAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                </div>
+              </div>
+            </div>
+
+            <div className="modal-footer">
+              <button 
+                className="cancel-btn" 
+                onClick={() => setShowAddModal(false)}
+                disabled={isSaving}
+              >
+                İptal
+              </button>
+              <button 
+                className="save-btn" 
+                onClick={handleCreateOrder}
+                disabled={
+                  isSaving ||
+                  (!newOrder.company && !newOrder.customer) ||
+                  !newOrder.totalAmount ||
+                  !newOrder.orderDate ||
+                  isNaN(newOrder.totalAmount) ||
+                  newOrder.totalAmount <= 0
+                }
+              >
+                {isSaving ? (
+                  <span className="loading-spinner">
+                    <i className="fas fa-spinner fa-spin"></i>
+                  </span>
+                ) : 'Kaydet'}
               </button>
             </div>
           </div>
-        ))}
-      </div>
-
-      {/* Hızlı Ürün Ekleme */}
-      <div className="quick-add-section">
-        <h2>Hızlı Ürün Ekleme</h2>
-        <div className="product-grid">
-          {products.map(product => (
-            <div key={product.id} className="product-card">
-              <div className="product-info">
-                <h3>{product.name}</h3>
-                <span className="price">₺{product.price.toLocaleString()}</span>
-                <span className="stock">Stok: {product.stock}</span>
-              </div>
-              <button className="add-button">
-                <i className="fas fa-plus"></i>
-                Ekle
-              </button>
-            </div>
-          ))}
         </div>
-      </div>
+      )}
     </div>
   );
 };
 
-export default Sales; 
+export default Sales;
