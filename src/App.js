@@ -45,6 +45,7 @@ function App() {
                 <i className="fas fa-home"></i>
                 <span>Ana Sayfa</span>
               </Link>
+              
               <Link to="/sales" className="sidebar-link">
                 <i className="fas fa-shopping-cart"></i>
                 <span>Satış Yönetimi</span>

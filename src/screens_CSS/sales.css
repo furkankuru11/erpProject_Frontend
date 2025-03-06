@@ -673,4 +673,81 @@ td {
 .error-state span {
   color: #dc2626;
   font-size: 1rem;
+}
+
+.product-select {
+  width: 100%;
+  padding: 10px;
+  border: 1px solid #e2e8f0;
+  border-radius: 8px;
+  font-size: 14px;
+  color: #1e293b;
+  background: white;
+}
+
+.product-select option:disabled {
+  color: #94a3b8;
+  font-style: italic;
+}
+
+.stock-info {
+  display: block;
+  margin-top: 4px;
+  color: #64748b;
+  font-size: 12px;
+}
+
+/* Input with icon styles */
+.input-with-icon {
+  position: relative;
+  display: flex;
+  align-items: center;
+}
+
+.input-with-icon input {
+  padding-left: 30px;
+  width: 100%;
+}
+
+.input-with-icon .currency-symbol {
+  position: absolute;
+  left: 10px;
+  color: #64748b;
+}
+
+/* Error message styles */
+.error-message {
+  background: #fee2e2;
+  color: #dc2626;
+  padding: 12px;
+  border-radius: 8px;
+  margin-bottom: 16px;
+  font-size: 14px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.error-message::before {
+  content: "!";
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 20px;
+  height: 20px;
+  background: #dc2626;
+  color: white;
+  border-radius: 50%;
+  font-weight: bold;
+}
+
+.product-info {
+  display: block;
+  margin-top: 8px;
+  color: #64748b;
+  font-size: 13px;
+  background: #f8fafc;
+  padding: 6px 10px;
+  border-radius: 6px;
+  border: 1px solid #e2e8f0;
 } 

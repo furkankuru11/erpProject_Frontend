@@ -290,7 +290,7 @@ const ExpenseManagement = () => {
           className="add-button"
           onClick={() => setShowAddModal(true)}
         >
-          + Yeni Gider
+          <i className="fas fa-plus"></i> Yeni Gider
         </button>
       </div>
 

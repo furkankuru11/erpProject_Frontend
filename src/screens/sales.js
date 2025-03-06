@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import '../screens_css/sales.css';
 import axios from 'axios';
+import { useNavigate } from 'react-router-dom';
 
 const API_BASE_URL = 'http://localhost:8081/api';
 
@@ -10,14 +11,11 @@ const Sales = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState(null);
 
-  const [companies] = useState([
-    { id: 1, name: 'ABC Şirketi' },
-    { id: 2, name: 'XYZ Limited' }
-  ]);
-
-  const [customers] = useState([
-    { id: 1, name: 'Ahmet Yılmaz' },
-    { id: 2, name: 'Mehmet Demir' }
+  const [companies, setCompanies] = useState([]);
+  const [customers, setCustomers] = useState([]);
+  const [customerTypes, setCustomerTypes] = useState([
+    { value: 'company', label: 'Kurumsal' },
+    { value: 'individual', label: 'Bireysel' }
   ]);
 
   const [searchTerm, setSearchTerm] = useState('');
@@ -38,11 +36,15 @@ const Sales = () => {
     discountAmount: 0,
     netAmount: 0,
     notes: '',
-    orderType: 'company' // UI için ek alan
+    orderType: 'company'
   });
 
   // Loading state ekle
   const [isSaving, setIsSaving] = useState(false);
+
+  const [products, setProducts] = useState([]);
+  const [selectedProduct, setSelectedProduct] = useState('');
+  const [quantity, setQuantity] = useState(1);
 
   const statusOptions = [
     { value: 'all', label: 'Tümü' },
@@ -101,40 +103,30 @@ const Sales = () => {
     try {
       // Backend'e gönderilecek veriyi hazırla
       const orderData = {
-        orderNumber: `SO${Math.floor(Math.random() * 10000).toString().padStart(4, '0')}`,
-        company: newOrder.orderType === 'company' && newOrder.company ? {
-          id: newOrder.company.id
-        } : null,
-        customer: newOrder.orderType === 'individual' && newOrder.customer ? {
-          id: newOrder.customer.id
-        } : null,
-        orderDate: new Date(newOrder.orderDate).toISOString().split('.')[0], // Remove milliseconds
-        deliveryDate: newOrder.deliveryDate ? new Date(newOrder.deliveryDate).toISOString().split('.')[0] : null,
+        companyId: newOrder.orderType === 'company' ? newOrder.company?.id : null,
+        customerId: newOrder.orderType === 'individual' ? newOrder.customer?.id : null,
+        orderDate: new Date(newOrder.orderDate).toISOString(),
+        deliveryDate: newOrder.deliveryDate ? new Date(newOrder.deliveryDate).toISOString() : null,
         status: "DRAFT",
-        totalAmount: Number(newOrder.totalAmount).toFixed(2),
-        taxAmount: Number(newOrder.taxAmount).toFixed(2),
-        discountAmount: Number(newOrder.discountAmount).toFixed(2),
-        netAmount: Number(newOrder.netAmount).toFixed(2),
+        totalAmount: Number(newOrder.totalAmount),
+        taxAmount: Number(newOrder.taxAmount),
+        discountAmount: Number(newOrder.discountAmount),
+        netAmount: Number(newOrder.netAmount),
         notes: newOrder.notes || "",
-        createdBy: {
-          id: 1
-        }
+        productId: Number(selectedProduct),
+        quantity: Number(quantity)
       };
 
       // İstek öncesi veriyi kontrol et
       console.log('Gönderilecek veri:', orderData);
 
       // Backend'e POST isteği gönder
-      const response = await axios.post(`${API_BASE_URL}/sales-orders`, orderData, {
-        headers: {
-          'Content-Type': 'application/json',
-          'Accept': 'application/json'
-        }
-      });
+      const response = await axios.post(`${API_BASE_URL}/sales-orders`, orderData);
 
-      console.log('Sunucu yanıtı:', response);
-
-      if (response.status === 201 || response.status === 200) {
+      if (response.data) {
+        // Stok güncelleme
+        await updateStock(selectedProduct, quantity);
+        
         setShowAddModal(false);
         
         // State'i sıfırla
@@ -152,6 +144,8 @@ const Sales = () => {
           notes: '',
           orderType: 'company'
         });
+        setSelectedProduct('');
+        setQuantity(1);
 
         alert('Sipariş başarıyla oluşturuldu!');
         fetchOrders();
@@ -185,21 +179,131 @@ const Sales = () => {
         errorMessage = 'Sunucuya bağlanılamadı. Lütfen internet bağlantınızı kontrol edin.';
       }
       
-      alert(errorMessage);
+      setError(errorMessage);
     } finally {
       setIsSaving(false);
     }
   };
 
-  // Component yüklendiğinde siparişleri getir
+  // Stok ürünlerini getir
+  const fetchProducts = async () => {
+    try {
+      const response = await axios.get(`${API_BASE_URL}/products`);
+      setProducts(response.data);
+    } catch (error) {
+      console.error('Ürünler yüklenirken hata:', error);
+      setError('Ürünler yüklenemedi');
+    }
+  };
+
+  // Müşterileri getir
+  const fetchCustomers = async () => {
+    try {
+      const [companiesResponse, customersResponse] = await Promise.all([
+        axios.get(`${API_BASE_URL}/companies`),
+        axios.get(`${API_BASE_URL}/customers`)
+      ]);
+
+      setCompanies(companiesResponse.data);
+      setCustomers(customersResponse.data);
+      setError(null);
+    } catch (error) {
+      console.error('Müşteriler yüklenirken hata:', error);
+      setError('Müşteri bilgileri yüklenirken bir hata oluştu.');
+    }
+  };
+
+  // Component yüklendiğinde verileri getir
   useEffect(() => {
-    fetchOrders();
+    const fetchData = async () => {
+      setLoading(true);
+      try {
+        await Promise.all([
+          fetchOrders(),
+          fetchCustomers(),
+          fetchProducts()
+        ]);
+      } catch (error) {
+        console.error('Veri yüklenirken hata:', error);
+        setError('Veriler yüklenirken bir hata oluştu.');
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
   }, []);
+
+  // Stok güncelleme fonksiyonu
+  const updateStock = async (productId, soldQuantity) => {
+    try {
+      const product = products.find(p => p.id === productId);
+      if (!product) return;
+
+      const newStockQuantity = product.stockQuantity - soldQuantity;
+      
+      await axios.put(`${API_BASE_URL}/products/${productId}`, {
+        ...product,
+        stockQuantity: newStockQuantity
+      });
+
+      // Stok listesini güncelle
+      await fetchProducts();
+    } catch (error) {
+      console.error('Stok güncellenirken hata:', error);
+      throw new Error('Stok güncellenemedi');
+    }
+  };
+
+  // Satış ekleme fonksiyonunu güncelle
+  const handleAddSale = async () => {
+    if (!selectedProduct || quantity < 1) {
+      setError('Lütfen ürün ve adet seçin');
+      return;
+    }
+
+    const product = products.find(p => p.id === selectedProduct);
+    if (!product) {
+      setError('Seçili ürün bulunamadı');
+      return;
+    }
+
+    if (product.stockQuantity < quantity) {
+      setError('Yetersiz stok miktarı');
+      return;
+    }
+
+    try {
+      setLoading(true);
+      
+      // Önce satışı kaydet
+      const saleResponse = await axios.post(`${API_BASE_URL}/sales`, {
+        // ... existing sale data ...
+        productId: selectedProduct,
+        quantity: quantity,
+        totalAmount: product.salePrice * quantity
+      });
+
+      // Sonra stoku güncelle
+      await updateStock(selectedProduct, quantity);
+
+      setShowAddModal(false);
+      // State'leri sıfırla
+      setSelectedProduct('');
+      setQuantity(1);
+      fetchOrders(); // Satışları yenile
+    } catch (error) {
+      console.error('Satış eklenirken hata:', error);
+      setError('Satış eklenemedi');
+    } finally {
+      setLoading(false);
+    }
+  };
 
   // Özet bilgileri hesapla
   const getSummary = () => {
     return {
-      totalSales: orders.reduce((sum, order) => sum + order.total_amount, 0),
+      totalSales: orders.reduce((sum, order) => sum + (order.total_amount || 0), 0),
       totalOrders: orders.length,
       activeOrders: orders.filter(order => !['DELIVERED', 'CANCELLED'].includes(order.status)).length,
       totalCustomers: new Set([
@@ -235,7 +339,7 @@ const Sales = () => {
           </div>
           <div className="card-content">
             <h3>Toplam Satış</h3>
-            <p>₺{getSummary().totalSales.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</p>
+            <p>₺{(getSummary().totalSales || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</p>
           </div>
         </div>
 
@@ -351,14 +455,14 @@ const Sales = () => {
                 <span>
                   <div className="amount-details">
                     <span className="total-amount">
-                      ₺{order.total_amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                      ₺{(order.total_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
                     </span>
                     <span className="tax-discount">
-                      {order.tax_amount > 0 && 
-                        <span className="tax">+KDV: ₺{order.tax_amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                      {(order.tax_amount || 0) > 0 && 
+                        <span className="tax">+KDV: ₺{(order.tax_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
                       }
-                      {order.discount_amount > 0 && 
-                        <span className="discount">-İnd: ₺{order.discount_amount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                      {(order.discount_amount || 0) > 0 && 
+                        <span className="discount">-İnd: ₺{(order.discount_amount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
                       }
                     </span>
                   </div>
@@ -388,7 +492,7 @@ const Sales = () => {
         </>
       )}
 
-      {/* Yeni Satış Modal */}
+      {/* Modal */}
       {showAddModal && (
         <div className="modal-overlay">
           <div className="modal">
@@ -399,6 +503,8 @@ const Sales = () => {
               </button>
             </div>
             <div className="modal-content">
+              {error && <div className="error-message">{error}</div>}
+              
               {/* Müşteri Bilgileri */}
               <div className="form-section">
                 <h4>Müşteri Bilgileri</h4>
@@ -408,44 +514,160 @@ const Sales = () => {
                     value={newOrder.orderType}
                     onChange={(e) => setNewOrder({...newOrder, orderType: e.target.value, company: null, customer: null})}
                   >
-                    <option value="company">Kurumsal</option>
-                    <option value="individual">Bireysel</option>
+                    <option value="">Seçiniz</option>
+                    {customerTypes.map(type => (
+                      <option key={type.value} value={type.value}>
+                        {type.label}
+                      </option>
+                    ))}
                   </select>
                 </div>
 
-                <div className="form-group">
-                  <label>{newOrder.orderType === 'company' ? 'Firma' : 'Müşteri'}</label>
-                  <select 
-                    value={newOrder.orderType === 'company' ? newOrder.company?.id : newOrder.customer?.id}
-                    onChange={(e) => {
-                      const value = e.target.value;
-                      const selected = newOrder.orderType === 'company' 
-                        ? companies.find(c => c.id === Number(value))
-                        : customers.find(c => c.id === Number(value));
-                      
-                      setNewOrder({
-                        ...newOrder,
-                        company: newOrder.orderType === 'company' ? selected : null,
-                        customer: newOrder.orderType === 'individual' ? selected : null
-                      });
-                    }}
-                  >
-                    <option value="">Seçiniz</option>
-                    {newOrder.orderType === 'company' 
-                      ? companies.map(company => (
-                          <option key={company.id} value={company.id}>{company.name}</option>
-                        ))
-                      : customers.map(customer => (
-                          <option key={customer.id} value={customer.id}>{customer.name}</option>
-                        ))
-                    }
-                  </select>
-                </div>
+                {newOrder.orderType && (
+                  <div className="form-group">
+                    <label>{newOrder.orderType === 'company' ? 'Firma' : 'Müşteri'}</label>
+                    <select
+                      value={newOrder.orderType === 'company' ? newOrder.company?.id : newOrder.customer?.id}
+                      onChange={(e) => {
+                        const value = e.target.value;
+                        if (!value) {
+                          setNewOrder({
+                            ...newOrder,
+                            company: null,
+                            customer: null
+                          });
+                          return;
+                        }
+
+                        const selected = newOrder.orderType === 'company' 
+                          ? companies.find(c => c.id === Number(value))
+                          : customers.find(c => c.id === Number(value));
+                        
+                        setNewOrder({
+                          ...newOrder,
+                          company: newOrder.orderType === 'company' ? selected : null,
+                          customer: newOrder.orderType === 'individual' ? selected : null
+                        });
+                      }}
+                    >
+                      <option value="">Seçiniz</option>
+                      {newOrder.orderType === 'company' 
+                        ? companies.map(company => (
+                            <option key={company.id} value={company.id}>
+                              {company.name}
+                            </option>
+                          ))
+                        : customers.map(customer => (
+                            <option key={customer.id} value={customer.id}>
+                              {customer.name} {customer.surname}
+                            </option>
+                          ))
+                      }
+                    </select>
+                  </div>
+                )}
               </div>
 
               {/* Sipariş Detayları */}
               <div className="form-section">
                 <h4>Sipariş Detayları</h4>
+                
+                <div className="form-group">
+                  <label>Stoktan Ürün</label>
+                  <select
+                    value={selectedProduct}
+                    onChange={(e) => {
+                      const productId = e.target.value;
+                      setSelectedProduct(productId);
+                      if (productId) {
+                        const product = products.find(p => p.id === Number(productId));
+                        if (product) {
+                          const salePrice = Number(product.salePrice) || 0;
+                          setNewOrder({
+                            ...newOrder,
+                            totalAmount: salePrice,
+                            taxAmount: salePrice * 0.18,
+                            netAmount: (salePrice * 1.18) - (newOrder.discountAmount || 0)
+                          });
+                        }
+                      } else {
+                        // Ürün seçimi kaldırıldığında değerleri sıfırla
+                        setNewOrder({
+                          ...newOrder,
+                          totalAmount: 0,
+                          taxAmount: 0,
+                          netAmount: 0
+                        });
+                      }
+                    }}
+                    className="product-select"
+                  >
+                    <option value="">Ürün Seçin</option>
+                    {products.map(product => (
+                      <option 
+                        key={product.id} 
+                        value={product.id}
+                        disabled={!product?.stockQuantity || product.stockQuantity < 1}
+                      >
+                        {product.name}
+                      </option>
+                    ))}
+                  </select>
+                  {selectedProduct && (
+                    <small className="product-info">
+                      Stok: {products.find(p => p.id === Number(selectedProduct))?.stockQuantity || 0} | 
+                      Fiyat: ₺{(products.find(p => p.id === Number(selectedProduct))?.salePrice || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}
+                    </small>
+                  )}
+                </div>
+
+                {selectedProduct && (
+                  <div className="form-row">
+                    <div className="form-group">
+                      <label>Satış Adedi</label>
+                      <input
+                        type="number"
+                        min="1"
+                        value={quantity}
+                        onChange={(e) => {
+                          const newQuantity = Number(e.target.value);
+                          setQuantity(newQuantity);
+                          const product = products.find(p => p.id === selectedProduct);
+                          if (product) {
+                            const total = product.salePrice * newQuantity;
+                            setNewOrder({
+                              ...newOrder,
+                              totalAmount: total,
+                              taxAmount: total * 0.18,
+                              netAmount: total * 1.18 - newOrder.discountAmount
+                            });
+                          }
+                        }}
+                        max={products.find(p => p.id === selectedProduct)?.stockQuantity}
+                      />
+                      <small className="stock-info">
+                        Mevcut Stok: {products.find(p => p.id === selectedProduct)?.stockQuantity}
+                      </small>
+                    </div>
+
+                    <div className="form-group">
+                      <label>İndirim Tutarı</label>
+                      <input 
+                        type="number"
+                        value={newOrder.discountAmount}
+                        onChange={(e) => {
+                          const discount = Number(e.target.value);
+                          setNewOrder({
+                            ...newOrder, 
+                            discountAmount: discount,
+                            netAmount: newOrder.totalAmount + newOrder.taxAmount - discount
+                          });
+                        }}
+                      />
+                    </div>
+                  </div>
+                )}
+
                 <div className="form-row">
                   <div className="form-group">
                     <label>Sipariş Tarihi</label>
@@ -466,42 +688,6 @@ const Sales = () => {
                   </div>
                 </div>
 
-                <div className="form-row">
-                  <div className="form-group">
-                    <label>Toplam Tutar</label>
-                    <input 
-                      type="number"
-                      value={newOrder.totalAmount}
-                      onChange={(e) => {
-                        const total = Number(e.target.value);
-                        const tax = total * 0.18; // Örnek KDV oranı
-                        setNewOrder({
-                          ...newOrder, 
-                          totalAmount: total,
-                          taxAmount: tax,
-                          netAmount: total + tax - newOrder.discountAmount
-                        });
-                      }}
-                    />
-                  </div>
-
-                  <div className="form-group">
-                    <label>İndirim Tutarı</label>
-                    <input 
-                      type="number"
-                      value={newOrder.discountAmount}
-                      onChange={(e) => {
-                        const discount = Number(e.target.value);
-                        setNewOrder({
-                          ...newOrder, 
-                          discountAmount: discount,
-                          netAmount: newOrder.totalAmount + newOrder.taxAmount - discount
-                        });
-                      }}
-                    />
-                  </div>
-                </div>
-
                 <div className="form-group">
                   <label>Notlar</label>
                   <textarea
@@ -516,19 +702,19 @@ const Sales = () => {
               <div className="order-summary">
                 <div className="summary-row">
                   <span>Ara Toplam:</span>
-                  <span>₺{newOrder.totalAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                  <span>₺{(newOrder.totalAmount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
                 </div>
                 <div className="summary-row">
                   <span>KDV (%18):</span>
-                  <span>₺{newOrder.taxAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                  <span>₺{(newOrder.taxAmount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
                 </div>
                 <div className="summary-row">
                   <span>İndirim:</span>
-                  <span>₺{newOrder.discountAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                  <span>₺{(newOrder.discountAmount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
                 </div>
                 <div className="summary-row total">
                   <span>Genel Toplam:</span>
-                  <span>₺{newOrder.netAmount.toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
+                  <span>₺{(newOrder.netAmount || 0).toLocaleString('tr-TR', { minimumFractionDigits: 2 })}</span>
                 </div>
               </div>
             </div>
@@ -537,7 +723,7 @@ const Sales = () => {
               <button 
                 className="cancel-btn" 
                 onClick={() => setShowAddModal(false)}
-                disabled={isSaving}
+                disabled={loading}
               >
                 İptal
               </button>
@@ -545,15 +731,14 @@ const Sales = () => {
                 className="save-btn" 
                 onClick={handleCreateOrder}
                 disabled={
-                  isSaving ||
+                  loading ||
+                  !selectedProduct ||
+                  quantity < 1 ||
                   (!newOrder.company && !newOrder.customer) ||
-                  !newOrder.totalAmount ||
-                  !newOrder.orderDate ||
-                  isNaN(newOrder.totalAmount) ||
-                  newOrder.totalAmount <= 0
+                  !newOrder.orderDate
                 }
               >
-                {isSaving ? (
+                {loading ? (
                   <span className="loading-spinner">
                     <i className="fas fa-spinner fa-spin"></i>
                   </span>
